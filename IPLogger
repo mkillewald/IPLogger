@@ -40,12 +40,14 @@ parse source . . fp .; df=left(fp,max(lastpos('/',fp),lastpos(':',fp)))
 /*     ^ Please note: the open brace here is a CTRL-Q character, and      */
 /*                    the \ at the end is CTRL-Y character.               */
 /*                                                                        */
-/*  3) If it's not there already, add the following line to your          */
+/*  3) Reload C-Net text and menus (login as sysop and use RT command)    */
+/*                                                                        */
+/*  4) If it's not there already, add the following line to your          */
 /*     S:user-startup file:                                               */
 /*                                                                        */
 /*     mount APIPE: from AMITCP:devs/apipe-mountlist                      */
 /*                                                                        */
-/*  4) Review the settings available in the below "SysOp Configurable     */
+/*  5) Review the settings available in the below "SysOp Configurable     */
 /*     Options" block making sure to list your telnet BBS nodes as        */
 /*     instructed below.                                                  */
 /*                                                                        */
