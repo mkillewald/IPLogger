@@ -1,0 +1,381 @@
+/**************************************************************************\
+$VER: IPLogger, v1.0.0 (Feb-18-2020) by k1ds3ns4t10n of -X-caliber BBS
+\**************************************************************************/
+options results;signal on SYNTAX;signal on ERROR;signal on IOERR
+parse value sourceline(2) with ." "title", "ver" ("vdate") by "author" of "hq" ".
+tr=transmit;se=sendstring;gu=getuser;esc="1b5b"x;cty="19"x;ctq="11"x;telnet. = ""
+rs="rexxsupport.library";if ~show("l",rs) then if ~addlib(rs,0,-30) then exit
+parse source . . fp .; df=left(fp,max(lastpos('/',fp),lastpos(':',fp)))
+/**************************************************************************/
+/*                                                                        */
+/*  IPLogger                                     -X-caliber BBS           */
+/*    A utility for C-Net Amiga BBS which           bbs.aholix.net:6800   */
+/*    logs the caller's IP address. A full                                */
+/*    AmiTCP/Genesis TCP/IP stack is required.                            */
+/*                                                                        */
+/*  Changelog:                                                            */
+/*    v1.0.0 (18 Feb 2020) by k1ds3ns4t10n of -X-caliber BBS              */
+/*                                                                        */
+/*  Use at your own risk.                                                 */
+/*                                                                        */
+/*  INSTALLATION INSTRUCTIONS:                                            */
+/*                                                                        */
+/*  0) A full AmiTCP or Genesis TCP/IP stack is required and must         */
+/*     already be installed and running before proceeding.                */
+/*                                                                        */
+/*  1) Create a folder called 'IPLogger' in your PFILES: directory and    */
+/*     copy this file there.                                              */
+/*                                                                        */
+/*  2) Edit line 19 of your "CNET:bbstext" file by adding                 */
+/*     "{#0 Pfiles:IPLogger/IPLogger}" to the start of the line           */
+/*                                                                        */
+/*     For example, change the original line 19 from:                     */
+/*                                                                        */
+/*     Press RETURN to enter the system:\i0                               */
+/*                                                                        */
+/*     to:                                                                */
+/*                                                                        */
+/*     {#0 Pfiles:IPLogger/IPLogger}Press RETURN to enter the system:\i0  */
+/*                                                                        */
+/*     ^ Please note: the open brace here is a CTRL-Q character, and      */
+/*                    the \ at the end is CTRL-Y character.               */
+/*                                                                        */
+/*  3) If it's not there already, add the following line to your          */
+/*     S:user-startup file:                                               */
+/*                                                                        */
+/*     mount APIPE: from AMITCP:devs/apipe-mountlist                      */
+/*                                                                        */
+/*  4) Review the settings available in the below "SysOp Configurable     */
+/*     Options" block making sure to list your telnet BBS nodes as        */
+/*     instructed below.                                                  */
+/*                                                                        */
+/*  That's it!                                                            */
+/*                                                                        */
+/**************************************************************************/
+/* SysOp Configurable Options *********************************************/
+
+g.sysLogDir = "CNET:SysData/log/"            /* Path to C-Net system logs */
+g.resolver  = "APIPE:AmiTCP:bin/resolve"   /* APIPE to AmiTCP:bin/resolve */
+
+g.maxTry    = 5  /* Number of attempts to get IP address before giving up */
+
+g.callLog   = 1    /* Make an entry in system call log? (0 = No, 1 = Yes) */
+g.resolveCL = 1    /* Resolve IP addresses in call log? (0 = No, 1 = Yes) */
+
+g.makeIpLog = 1          /* Generate a separate IP log? (0 = No, 1 = Yes) */
+g.resolveIPL= 1      /* Resolve IP addresses in IP log? (0 = No, 1 = Yes) */
+g.ipLog     = "IPLog"         /* file that will be created in g.sysLogDir */
+
+g.debug     = 0                  /* Create a debug log? (0 = No, 1 = Yes) */
+g.debugLog  = "DebugIPLog"    /* file that will be created in g.sysLogDir */
+
+/* List your telnet BBS nodes below indicating which TCP port each node   */
+/* answers on. A separate line is required for each telnet node on your   */
+/* system that you wish to log IP addresses for.                          */
+/*                                                                        */
+/* The line format is:                                                    */
+/* telnet.BBS_NODE = TCP_PORT                                             */
+/*                                                                        */
+/* Example: If you have 5 telnet nodes 1-5 that answer on TCP Port 2300,  */
+/* you would list your ports like this:                                   */
+/*                                                                        */
+/* telnet.1 = 2300                                                        */
+/* telnet.2 = 2300                                                        */
+/* telnet.3 = 2300                                                        */
+/* telnet.4 = 2300                                                        */
+/* telnet.5 = 2300                                                        */
+/*                                                                        */
+/* Example 2: If BBS node 0 answers on TCP port 9600, BBS node 1 answers  */
+/* on TCP port 6502, and nodes 2-5 answer on TCP port 6400, then your     */
+/* list would look like so:                                               */
+/*                                                                        */
+/* telnet.0 = 9600                                                        */
+/* telnet.1 = 6502                                                        */
+/* telnet.2 = 6400                                                        */
+/* telnet.3 = 6400                                                        */
+/* telnet.4 = 6400                                                        */
+/* telnet.5 = 6400                                                        */
+/*                                                                        */
+/* NOTE: Do not include any non-telnet nodes in this list. Any port you   */
+/* do not list will be excluded from IP logging.                          */
+/*                                                                        */
+/* List each telnet BBS node here (format: telnet.BBS_NODE = TCP_PORT)    */
+
+telnet.0  = 9600
+telnet.1  = 6860
+telnet.2  = 6800
+telnet.3  = 6800
+telnet.4  = 6800
+telnet.5  = 6800
+telnet.6  = 6800
+telnet.7  = 6800
+telnet.8  = 6800
+telnet.9  = 6800
+telnet.10 = 6800
+telnet.11 = 6800
+
+/* End of SysOp Configurable Options **************************************/
+/**************************************************************************/
+
+gu 1109795; localMode=result
+gu 23; thisNode=result
+
+/* check if this port should be ignored and if so, exit */
+if localMode | telnet.thisNode == "" then exit
+
+if g.debug then do
+  if ~exists(g.sysLogDir||g.debugLog) then fileMode = "W"
+  else fileMode = "A"
+  debugLogOpen = open(DBGL, g.sysLogDir||g.debugLog, fileMode)
+end
+else debugLogOpen=0
+
+call logIpPortAndHostname(getIpAddrAndPort(), thisNode)
+
+if debugLogOpen then call close(DBGL)
+
+exit
+
+/* Procedures *************************************************************/
+
+/* Attempts to determine the caller's remote IP address and Port by reading
+   the connections list from AmiTCP.
+
+   returns the IP address and port as a single string in hex notation
+*/
+getIpAddrAndPort: procedure expose fp ver debugLogOpen thisNode telnet. g.
+  marker = 5*(thisNode+1) /* added +1 to handle node 0 */
+
+  if debugLogOpen then do
+    eDate = date();eTime = time()
+    entry = eDate" "eTime" Marker:"marker" Node:"thisNode" TCP Port:"telnet.thisNode
+    call writeln(DBGL, entry)
+  end
+
+  do attempt = 1 to g.maxTry
+
+    /* First we get a baseline list of connections from AmiTCP. Then we send
+       out a bit of data as a "marker" and immediately retrieve the list of
+       connections again from AmiTCP */
+
+    address AMITCP 'QUERY' 'CONNECTIONS'; baseline=result
+    interpret "address CNetrexx"||thisNode||' send copies("0d"x, marker)'
+    address AMITCP 'QUERY' 'CONNECTIONS'; connections=result
+    interpret "address CNetrexx"||thisNode||";"
+
+    /* process the baseline connections list */
+
+    if debugLogOpen then call writeln(DBGL, "Attempt "attempt" Baseline Connections:")
+
+    baseCount = 0; sndQ. = 0; ipAddrPortHex = 0
+    do while baseline ~= ""
+      parse var baseline proto rq sq laddr lport faddr fport status baseline
+
+      /* filter out ESTABLISHED connections to the TCP port used by thisNode,
+         count them and save sq value in a lookup table */
+
+      if proto=="t" & status=="4" & x2d(lport)==telnet.thisNode then do
+        baseCount = baseCount + 1
+        indx = faddr||fport
+        sndQ.indx = x2d(sq)
+        if baseCount==1 then ipAddrPortHex = indx
+        else ipAddrPortHex = 0
+        if debugLogOpen then do
+          entry = left(x2d(rq), 5)||left(x2d(sq), 5)||,
+            left(hex2inet(laddr)":"x2d(lport), 22)||,
+            left(hex2inet(faddr)":"x2d(fport), 22)
+          call writeln(DBGL, entry)
+        end
+      end
+    end
+
+    /* if baseCount==1 at this point, there is only one active connection to
+       the TCP port used by thisNode. So, we've found our IP and we can skip
+       the next part */
+
+    if baseCount==1 then leave attempt
+
+    /* baseCount was greater than 1, so we'll process the second list of
+       connections to look for the "marker" that was sent out. */
+
+    if debugLogOpen then call writeln(DBGL, "Attempt "attempt" Marked Connections:")
+
+    ipAddrPortHex = 0; markerFound = 0; duplicate = 0
+    do while connections ~= ""
+      parse var connections proto rq sq laddr lport faddr fport status connections
+
+      /* filter out ESTABLISHED connections to the TCP port used by thisNode,
+         and compare the current sq value to our baseline sq value looking
+         for the "marker" we sent */
+
+      indx = faddr||fport;  debugComment = ""
+      if proto=="t" & status=="4" & x2d(rq)==0 & x2d(lport)==telnet.thisNode then do
+        if ~markerFound & x2d(sq)-sndQ.indx==marker then do
+          /* marker found, HUZZAH!! */
+          markerFound = 1; ipAddrPortHex = indx
+          debugComment = " Marker Found!"
+        end
+
+        /* After our "marker" is found, we keep checking connections to make
+           sure we haven't found a false positive. If a duplicate "marker"
+           is found we leave this attempt and try again.
+
+           If a duplicate "marker" is found on the last attempt, then
+           we return 0xFFFFFFFFFFFF as an indication */
+
+        else if markerFound & x2d(sq)-sndQ.indx==marker then do
+          /* uh oh! marker found twice */
+          duplicate = 1; ipAddrPortHex = "FFFFFFFFFFFF"
+          debugComment = " Duplicate Marker!"
+        end
+        if debugLogOpen then do
+          entry = left(x2d(rq), 5)||left(x2d(sq), 5)||,
+            left(hex2inet(laddr)":"x2d(lport), 22)||,
+            left(hex2inet(faddr)":"x2d(fport), 22)||debugComment
+          call writeln(DBGL, entry)
+        end
+        if duplicate then leave /* stop parsing connections and try again */
+      end
+    end /* do while */
+    if markerFound & ~duplicate then leave attempt
+  end /* do attempt */
+
+  if debugLogOpen then do
+    if ipAddrPortHex = 0 then do
+      ipAddr = "0.0.0.0"; rPort=0
+    end
+    else do
+      ipAddr = hex2inet(substr(ipAddrPortHex, 1, 8))
+      rPort = x2d(substr(ipAddrPortHex, 9))
+    end
+    call writeln(DBGL, "Logging: "||ipAddr||":"||rport)
+    call writeln(DBGL, copies("-", 79))
+  end
+
+  /* At this point, there should be only three possible return values:
+     1. The user's found IP address and remote port (in hex),
+     2. 0 indicating IP or marker not found, or
+     3. 0xFFFFFFFFFFFF indicating the IP could not be determined due to a
+        duplicate marker on the last attempt. */
+
+return ipAddrPortHex
+
+/* Logs the connected IP address and hostname to the C-Net System port log
+   @param ipAddrPortHex the IP address and port to log (in hex)
+   @param node    the bbs node this log entry is for
+ */
+logIpPortAndHostname: procedure expose fp ver title author hq cty g. telnet.
+  parse arg ipAddrPortHex, node
+
+  if ipAddrPortHex = 0 then do
+    ipAddr = "0.0.0.0"; rPort=0
+    fqdn = "Error: IP address was not determined"
+  end
+  else do
+    ipAddr = hex2inet(substr(ipAddrPortHex, 1, 8))
+    rport = x2d(substr(ipAddrPortHex, 9))
+    if ipAddr == "255.255.255.255" then fqdn = "Error: Duplicate marker found"
+    else if g.resolveCL | g.resolveIPL then fqdn = resolveIP(ipAddr)
+    else fqdn=""
+  end
+
+  eDate = date(); eTime = time()
+
+  /* write to the port log, which is added to the call log on logoff */
+  if g.callLog then do
+    portLogPath = g.sysLogDir"port"node
+    if ~exists(portLogPath) then fileMode = "W"
+    else fileMode = "A"
+    portLogOpen = open(PLOG, portLogPath, fileMode)
+    if portLogOpen then do
+      tStamp = getFormattedTimeStamp(eDate, eTime)
+      entry1 = formatLogEntry(tStamp, "from "||ipAddr||":"||rPort, node)
+      entry2 = formatLogEntry(tStamp, fqdn, node)
+      call writeln(PLOG, entry1)
+      if fqdn~="" & g.resolveCL then call writeln(PLOG, entry2)
+      call close(PLOG)
+    end
+  end
+
+  /* write to the IP log */
+  if g.makeIpLog then do
+    ipLogPath = g.sysLogDir||g.IpLog
+    if ~exists(ipLogPath) then fileMode = "W"
+    else ipLogOpen = fileMode = "A"
+    ipLogOpen = open(IPLOG, ipLogPath, fileMode)
+    if ipLogOpen then do
+      if fileMode=="W" then do
+        header = title" "ver" by "author" "hq" bbs.aholix.net:6800"
+        call writeln(IPLOG, header)
+        call writeln(IPLOG, "")
+      end
+      entry1 = right(eDate, 11)||right(eTime, 9)" Node:"node" Port:"||,
+        telnet.node" "ipAddr":"rPort
+      entry2 = copies(" ", 21)||fqdn
+      call writeln(IPLOG, entry1)
+      if fqdn~="" & g.resolveIPL then call writeln(IPLOG, entry2)
+      call close(IPLOG)
+    end
+  end
+return
+
+/* Formats a message for entry into the C-Net System port log
+   @param tStamp  a pre-formatted timestamp, see getFormattedTimeStamp()
+   @param message the log message to be added
+   @param node    the bbs node this log entry is for
+
+   returns a formatted string for C-Net System port logs
+ */
+formatLogEntry: procedure expose fp ver cty
+  parse arg tStamp, message, node
+return cty||"c2"||tStamp||" "||cty||"c7"||left("Port "||node, 9)||" "||cty||"c6"||message
+
+/* Returns a timestamp with date and time formatted for C-Net System logs
+   example output (will always be 12 chars): "31-Jan 13:41" or " 4-Feb  2:12"
+ */
+getFormattedTimeStamp: procedure expose fp ver
+  parse arg eDate, eTime
+  rTime = substr(eTime, 1, length(eTime)-3) /* strip off seconds */
+  if length(rTime) > 4 then rtime = strip(rTime, "L", "0")
+  rTime = right(rTime, 5)
+
+  rDate = substr(eDate, 1, length(eDate)-5) /* strip off year */
+  rDate = translate(rDate, "-", " ")
+  rDate = right(strip(rDate, "L", "0"), 6)
+return rDate" "rTime
+
+/* Attempts to resove a given IP address into a domain name
+   @param ipaddr the IP address to resolve (in normal dot notation)
+
+   returns the fully qualified domain name or "hostname not found"
+*/
+resolveIP: procedure expose fp ver g.
+  parse arg ipaddr
+  if open(RSLV, g.resolver||" "||ipaddr, 'R') then do
+    parse value readln(RSLV) with keyword ip fqdn .
+    call close(RSLV)
+    if keyword == "HOST" then return fqdn
+  end
+  else return "ERROR: IPLogger could not open: "g.resolver" "ipaddr
+return "hostname not found"
+
+/*
+ * Convert Inet address (in hex) into dot notation
+ *
+ * this function was taken directly from the netstat ARexx file in the
+ * AmiTCP:bin/ folder
+ */
+hex2inet: procedure expose fp ver
+  parse arg haddr .
+  inetaddr = x2d(substr(haddr,1,2)) || "." || x2d(substr(haddr,3,2)) ||,
+      "." || x2d(substr(haddr,5,2)) || "." || x2d(substr(haddr,7,2))
+return inetaddr
+
+/**************************************************************************/
+SYNTAX:;ERROR:;IOERR:;e1="n1 Error: "rc" ("errortext(rc)")"
+  e2="  Line: "left(sigl,4)"File:";c="`"fp", "ver"'";e2=e2" "c;tr e1; tr e2
+  logentry e1;logentry e2;e=strip(translate(sourceline(sigl),"\{",""))
+  do while e~="";e3="Source: "left(e,37);tr e3; logentry e3;e=substr(e,38);end
+  bufferflush;exit
+/**************************************************************************\
+\*************************** -X-caliber BBS telnet://bbs.aholix.net:6800 **/
